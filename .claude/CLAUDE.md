@@ -1,5 +1,11 @@
 # WBT ROS2 Workspace - Development Guidelines
 
+## 重要：必须使用ROS2
+
+**所有开发和实验必须使用ROS2 Humble**
+- ❌ 不使用ROS1
+- ✅ 使用ROS2原生包（slam_gmapping, slam_toolbox, cartographer, Nav2等）
+
 ## Workspace Structure
 
 ```
@@ -14,7 +20,7 @@
 
 ### 1. Source Code Protection
 - **`yahboomcar_ws/`** is a symlink to `/home/jetson/yahboomcar_ros2_ws/yahboomcar_ws`
-- **DO NOT modify files in `yahboomcar_ws/` directly**
+- **DO NOT modify files in `_yahboomcar_ws/` directly**
 - This is the original source code and must remain unchanged
 
 ### 2. Making Changes
@@ -51,3 +57,21 @@ git add yahboomcar_packages/package_name
 git commit -m "Modify package_name"
 git push origin main
 ```
+
+## 正确启动ROS2导航系统
+
+使用yahboomcar官方的一体化launch文件，不要分开启动各个组件：
+
+```bash
+# 终端1：启动SLAM建图
+cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+source install/setup.bash
+ros2 launch yahboomcar_nav map_gmapping_launch.py rplidar_type:=a1
+
+# 终端2：启动RViz可视化
+cd ~/yahboomcar_ros2_ws/yahboomcar_ws
+source install/setup.bash
+ros2 launch yahboomcar_nav display_map_launch.py
+```
+
+参考文档：`docs/1.gmapping_guide.md`

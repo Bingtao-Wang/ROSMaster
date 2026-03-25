@@ -77,7 +77,30 @@
       "Bash(sudo grep:*)",
       "Bash(sudo ls:*)",
       "Bash(sudo cat:*)",
-      "Bash(git check-ignore:*)"
+      "Bash(git check-ignore:*)",
+      "Bash(rm -rf .git/refs/original/)",
+      "Bash(git reflog:*)",
+      "Bash(git gc:*)",
+      "Bash(ssh -X jetson@192.168.1.100 \"echo ''SSH connection test''\")",
+      "Bash(ssh:*)",
+      "Bash(sudo du:*)",
+      "Bash(docker system:*)",
+      "Bash(docker images:*)",
+      "Bash(pkill:*)",
+      "Bash(grep -E \"^/scan$|^/odom$\")",
+      "Bash(source /home/jetson/wbt_ws/WBT_ROS2_WS/install/setup.bash)",
+      "Bash(apt-cache show:*)",
+      "Bash(sudo apt-get:*)",
+      "Bash(tmux:*)",
+      "Bash(sudo tee:*)",
+      "Bash(gh --version)",
+      "Bash(gh extension:*)",
+      "Bash(pip3 install:*)",
+      "Bash(npm install:*)",
+      "WebSearch",
+      "Bash(codex:*)",
+      "Bash(cp -r /tmp/rrt_exploration/src/*.cpp /home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/src/)",
+      "Bash(cp -r /tmp/rrt_exploration/scripts/*.py /home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/scripts/)"
     ]
   }
 }

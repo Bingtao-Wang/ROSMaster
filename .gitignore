@@ -1,2 +1,8 @@
 cyclonedds.log
 _yahboomcar_ws
+log/
+build/
+install/
+frames_*.gv
+frames_*.pdf
+.vscode/

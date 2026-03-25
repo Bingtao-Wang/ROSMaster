@@ -36,6 +36,8 @@ install(PROGRAMS
   scripts/scan_dilute.py
   scripts/send_mark.py
   scripts/spech_send_mark.py
+  scripts/topic_relay.py
+  scripts/tf_relay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
