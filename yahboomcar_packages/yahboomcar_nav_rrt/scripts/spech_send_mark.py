@@ -1,202 +1,166 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 # encoding: utf-8
 
-import rospy
+import rclpy
+from rclpy.node import Node
+from rclpy.action import ActionClient
 from std_msgs.msg import Bool
-from move_base_msgs.msg import *
-from geometry_msgs.msg import Twist
-from actionlib_msgs.msg import GoalID
-from visualization_msgs.msg import Marker
-from visualization_msgs.msg import MarkerArray
-from geometry_msgs.msg import PointStamped, PoseStamped, PoseWithCovarianceStamped
-import Speech_Lib
-spe = Speech_Lib.Speech()
+from nav2_msgs.action import NavigateToPose
+from geometry_msgs.msg import Twist, PointStamped, PoseStamped, PoseWithCovarianceStamped
+from visualization_msgs.msg import Marker, MarkerArray
+from action_msgs.msg import GoalStatus
+
+try:
+    import Speech_Lib
+    spe = Speech_Lib.Speech()
+    SPEECH_AVAILABLE = True
+except ImportError:
+    SPEECH_AVAILABLE = False
 
 
-class Multipoint_navigation:
+class MultipointNavigation(Node):
     def __init__(self):
-        rospy.on_shutdown(self.cancel)
+        super().__init__('multipoint_navigation_speech')
         self.InitialParam()
-        # 用于发布目标点标记 || Used to publish target point markers
-        self.pub_mark = rospy.Publisher('path_point', MarkerArray, queue_size=100)
-        # 订阅rviz内标记按下的位置 || Subscribe to mark the pressed position in rviz
-        self.sub_click = rospy.Subscriber('clicked_point', PointStamped, self.press_callback)
-        # 发布目标点 || Publish target point
-        self.pub_goal = rospy.Publisher('move_base_simple/goal', PoseStamped, queue_size=1)
-        # 取消目标点 || cancel target point
-        self.pub_cancelgoal = rospy.Publisher("move_base/cancel", GoalID, queue_size=10)
-        # 订阅到达目标点的状态 || Subscribe to the status of reaching the target point
-        self.sub_goal_result = rospy.Subscriber('move_base/result', MoveBaseActionResult, self.goal_result_callback)
-        # 订阅初始化位置话题 || Subscribe to the initial pose topic
-        self.sub_initialpose = rospy.Subscriber('initialpose', PoseWithCovarianceStamped, self.initialpose_callback)
-        # 发布初始位姿 || Post initial pose
-        self.pub_rtabinitPose = rospy.Publisher("rtabmap/initialpose", PoseWithCovarianceStamped, queue_size=10)
-        self.pub_cmdVel = rospy.Publisher('/cmd_vel', Twist, queue_size=10)
-        self.sub_JoyState = rospy.Subscriber('/JoyState', Bool, self.JoyStateCallback)
+        self.pub_mark = self.create_publisher(MarkerArray, 'path_point', 100)
+        self.sub_click = self.create_subscription(PointStamped, 'clicked_point', self.press_callback, 10)
+        self.pub_goal = self.create_publisher(PoseStamped, 'goal_pose', 1)
+        self.nav_client = ActionClient(self, NavigateToPose, 'navigate_to_pose')
+        self.sub_initialpose = self.create_subscription(PoseWithCovarianceStamped, 'initialpose', self.initialpose_callback, 10)
+        self.pub_rtabinitPose = self.create_publisher(PoseWithCovarianceStamped, 'rtabmap/initialpose', 10)
+        self.pub_cmdVel = self.create_publisher(Twist, '/cmd_vel', 10)
+        self.sub_JoyState = self.create_subscription(Bool, '/JoyState', self.JoyStateCallback, 10)
+        self.goal_handle = None
 
     def JoyStateCallback(self, msg):
-        if not isinstance(msg, Bool): return
         if msg.data:
             self.cancel_marker()
             self.pub_cmdVel.publish(Twist())
 
     def InitialParam(self):
-        # 目标点标记数组 || Target point marker array
         self.markerArray = MarkerArray()
-        # count表示当前目标点计数
         self.count = 0
-        # index表示已完成的目标点计数
         self.index = 0
-        # 允许再次尝试前往尚未抵达的该目标点
         self.try_again = 1
 
-    def cancel(self):
-        self.pub_cancelgoal.publish(GoalID())
-        self.pub_mark.unregister()
-        self.pub_goal.unregister()
-        self.pub_cancelgoal.unregister()
-        self.pub_rtabinitPose.unregister()
-        self.sub_click.unregister()
-        self.sub_goal_result.unregister()
-        self.sub_initialpose.unregister()
-
     def initialpose_callback(self, msg):
-        if not isinstance(msg, PoseWithCovarianceStamped): return
         self.cancel_marker()
         self.pub_rtabinitPose.publish(msg)
 
     def cancel_marker(self):
-        # Clear marker
         self.markerArray = MarkerArray()
         marker = Marker()
         marker.action = marker.DELETEALL
         self.markerArray.markers.append(marker)
         self.pub_mark.publish(self.markerArray)
         self.InitialParam()
-        self.pub_cancelgoal.publish(GoalID())
+        if self.goal_handle:
+            self.goal_handle.cancel_goal_async()
 
     def press_callback(self, msg):
-        print('Add a new target point ' + str(self.count) + '.')
-        # Create a marker object
+        self.get_logger().info(f'Add a new target point {self.count}.')
+        if SPEECH_AVAILABLE:
+            spe.speech_text(f'Add a new target point {self.count}.')
         marker = Marker()
         marker.header.frame_id = 'map'
-        # Character format
         marker.type = marker.TEXT_VIEW_FACING
-        # marker model
         marker.action = marker.ADD
-        # the size of the marker
         marker.scale.x = 0.6
         marker.scale.y = 0.6
         marker.scale.z = 0.6
-        # marker ColorRGBA
-        marker.color.r = 1
-        marker.color.g = 0
-        marker.color.b = 0
-        marker.color.a = 1
-        # marker position XYZ
+        marker.color.r = 1.0
+        marker.color.g = 0.0
+        marker.color.b = 0.0
+        marker.color.a = 1.0
         marker.pose.position.x = msg.point.x
         marker.pose.position.y = msg.point.y
         marker.pose.position.z = msg.point.z
-        # marker text
         marker.text = str(self.count)
         self.markerArray.markers.append(marker)
-        # Set the id of markers
-        id = 0
-        for m in self.markerArray.markers:
-            m.id = id
-            id += 1
-        # Publish markerArray
+        for i, m in enumerate(self.markerArray.markers):
+            m.id = i
         self.pub_mark.publish(self.markerArray)
-        # Publish target point
         if self.count == 0:
             self.PubTargetPoint(msg.point.x, msg.point.y)
             self.index += 1
         self.count += 1
 
     def PubTargetPoint(self, x, y):
-        pose = PoseStamped()
-        pose.header.frame_id = 'map'
-        pose.header.stamp = rospy.Time.now()
-        # The location of the target point
-        pose.pose.position.x = x
-        pose.pose.position.y = y
-        # The posture of the target point. z=sin(angle/2) w=cos(angle/2)
-        pose.pose.orientation.z = 0
-        pose.pose.orientation.w = 1
-        self.pub_goal.publish(pose)
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose.header.frame_id = 'map'
+        goal_msg.pose.header.stamp = self.get_clock().now().to_msg()
+        goal_msg.pose.pose.position.x = x
+        goal_msg.pose.pose.position.y = y
+        goal_msg.pose.pose.orientation.z = 0.0
+        goal_msg.pose.pose.orientation.w = 1.0
+        self.nav_client.wait_for_server()
+        send_goal_future = self.nav_client.send_goal_async(goal_msg)
+        send_goal_future.add_done_callback(self.goal_response_callback)
 
-    def goal_result_callback(self, msg):
-        if self.count == 0: return
-        print ("Get the status of reaching the target point!!!")
-        # 到达目标点 || Reach the target point
-        if msg.status.status == 3:
+    def goal_response_callback(self, future):
+        self.goal_handle = future.result()
+        if not self.goal_handle.accepted:
+            self.get_logger().warn('Goal rejected')
+            return
+        result_future = self.goal_handle.get_result_async()
+        result_future.add_done_callback(self.goal_result_callback)
+
+    def goal_result_callback(self, future):
+        if self.count == 0:
+            return
+        result = future.result()
+        status = result.status
+        self.get_logger().info('Get the status of reaching the target point!')
+        if status == GoalStatus.STATUS_SUCCEEDED:
             self.try_again = 1
-            # 本轮巡航完成，重新开始巡航 || This round of cruise is completed, restart cruise
             if self.index == self.count:
-                print ('Reach the target point ' + str(self.index - 1) + '.')
+                msg = f'Reach the target point {self.index - 1}.'
+                self.get_logger().info(msg)
+                if SPEECH_AVAILABLE:
+                    spe.speech_text(msg)
                 self.index = 0
                 x = self.markerArray.markers[self.index].pose.position.x
                 y = self.markerArray.markers[self.index].pose.position.y
                 self.PubTargetPoint(x, y)
-                # 巡航下一个点 || Cruise to the next point
                 self.index += 1
-            # 巡航本轮剩下的点 || Cruise the remaining points of the round
             elif self.index < self.count:
-                print ('Reach the target point ' + str(self.index - 1) + '.')
+                msg = f'Reach the target point {self.index - 1}.'
+                self.get_logger().info(msg)
+                if SPEECH_AVAILABLE:
+                    spe.speech_text(msg)
                 x = self.markerArray.markers[self.index].pose.position.x
                 y = self.markerArray.markers[self.index].pose.position.y
                 self.PubTargetPoint(x, y)
-                # 巡航下一个点 || Cruise to the next point
                 self.index += 1
-        # 未抵达目标点 || Did not reach the target point
-        else :
-            rospy.logwarn('Can not reach the target point ' + str(self.index - 1) + '.')
-            # 再次尝试前往未到达的目标点 || Try again to reach the unreached target point
+        else:
+            msg = f'Can not reach the target point {self.index - 1}.'
+            self.get_logger().warn(msg)
+            if SPEECH_AVAILABLE:
+                spe.speech_text(msg)
             if self.try_again == 1:
-                rospy.logwarn('trying reach the target point ' + str(self.index - 1) + ' again!')
+                self.get_logger().warn(f'trying reach the target point {self.index - 1} again!')
                 x = self.markerArray.markers[self.index - 1].pose.position.x
                 y = self.markerArray.markers[self.index - 1].pose.position.y
                 self.PubTargetPoint(x, y)
-                # 不允许再次尝试前往未到达的目标点 || It is not allowed to try again to reach the unreached target point
                 self.try_again = 0
-            # 继续前往下一个目标点 || Continue to the next target point
             elif self.index < len(self.markerArray.markers):
-                rospy.logwarn('try reach the target point ' + str(self.index - 1) + ' failed! reach next point.')
-                # 如果已完成本轮巡航，则设置从头开始 || If this round of cruise has been completed, the setting starts from the beginning
-                if self.index == self.count: self.index = 0
+                self.get_logger().warn(f'try reach the target point {self.index - 1} failed! reach next point.')
+                if self.index == self.count:
+                    self.index = 0
                 x = self.markerArray.markers[self.index].pose.position.x
                 y = self.markerArray.markers[self.index].pose.position.y
                 self.PubTargetPoint(x, y)
-                # 巡航下一个点 || Cruise to the next point
                 self.index += 1
-                # 允许再次尝试前往未到达的目标点 || Allow another attempt to reach the unreached target point
                 self.try_again = 1
 
 
-if __name__ == '__main__':
-    # 初始化节点 || Initialize node
-    rospy.init_node('MultiPoint_navigation')
-    multipount_nav = Multipoint_navigation()
-    #ctrl = Ctrl_driver()
-    try:
-        while not rospy.is_shutdown():
-            speech_r = spe.speech_read()
-            #spe.void_write(speech_r)
-            if speech_r == 19 :
-                print("goal to A")
-                spe.void_write(speech_r)
-                multipount_nav.PubTargetPoint(3.24762392044,-1.04746031761)
-# A
-            elif speech_r == 20 :
-                print("goal to B")
-                spe.void_write(speech_r)
-                multipount_nav.PubTargetPoint(1,3)
-# B
-            elif speech_r == 21 :
-                print("goal to C")
-                spe.void_write(speech_r)
-                multipount_nav.PubTargetPoint(2,3)
+def main(args=None):
+    rclpy.init(args=args)
+    node = MultipointNavigation()
+    rclpy.spin(node)
+    node.destroy_node()
+    rclpy.shutdown()
 
-# C
-    except KeyboardInterrupt:
-        print("exit")
+
+if __name__ == '__main__':
+    main()

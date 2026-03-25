@@ -1,37 +1,38 @@
-//
-// Created by yahboom on 2021/6/24.
-//
-#include <ros/ros.h>
-#include <string.h>
-#include <iostream>
-#include <world_canvas_msgs/SaveMap.h>
+#include <rclcpp/rclcpp.hpp>
+#include <std_srvs/srv/trigger.hpp>
+#include <string>
+#include <memory>
 
-using namespace std;
-
-bool save_map_callback(world_canvas_msgs::SaveMap::Request &req, world_canvas_msgs::SaveMap::Response &res) {
-    const char *string1 = "dbus-launch gnome-terminal -- roslaunch yahboomcar_nav map_saver.launch map_name:=";
-    const char *string2 = req.map_name.data();
-    char command[100];
-    strcpy(command, string1);
-    strcat(command, string2);
-    system(command);
-    return true;
-}
-
-int main(int argc, char **argv) {
-    ros::init(argc, argv, "save_map");
-    ros::NodeHandle n;
-    ros::ServiceServer service_save_map = n.advertiseService("/save_map", save_map_callback);
-    int i = 0;
-    int rate = 10;
-    ros::Rate loopRate(rate);
-    while (ros::ok()) {
-        if (i > 9) {
-//            printf("11111111\n");
-            i = 0;
-        } else i++;
-        ros::spinOnce();
-        loopRate.sleep();
+class SaveMapNode : public rclcpp::Node
+{
+public:
+    SaveMapNode() : Node("save_map")
+    {
+        service_ = this->create_service<std_srvs::srv::Trigger>(
+            "/save_map",
+            std::bind(&SaveMapNode::save_map_callback, this, std::placeholders::_1, std::placeholders::_2));
+        RCLCPP_INFO(this->get_logger(), "Save map service ready");
     }
+
+private:
+    void save_map_callback(
+        const std::shared_ptr<std_srvs::srv::Trigger::Request> request,
+        std::shared_ptr<std_srvs::srv::Trigger::Response> response)
+    {
+        (void)request;
+        std::string command = "gnome-terminal -- ros2 run nav2_map_server map_saver_cli -f ~/map";
+        int result = system(command.c_str());
+        response->success = (result == 0);
+        response->message = response->success ? "Map saved successfully" : "Failed to save map";
+    }
+
+    rclcpp::Service<std_srvs::srv::Trigger>::SharedPtr service_;
+};
+
+int main(int argc, char **argv)
+{
+    rclcpp::init(argc, argv);
+    rclcpp::spin(std::make_shared<SaveMapNode>());
+    rclcpp::shutdown();
     return 0;
 }
