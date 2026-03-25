@@ -66,19 +66,20 @@ public:
             shapes_pub_->publish(points_);
         }
 
-        // Calculate map dimensions
-        float init_map_x = std::abs(points_.points[2].x - points_.points[0].x);
+        // Calculate map dimensions from 4 points
+        float init_map_x = std::abs(points_.points[1].x - points_.points[0].x);
         float init_map_y = std::abs(points_.points[2].y - points_.points[0].y);
         float Xstartx = (points_.points[0].x + points_.points[2].x) * 0.5;
         float Xstarty = (points_.points[0].y + points_.points[2].y) * 0.5;
 
-        // Initialize RRT
+        // Initialize RRT with robot position (use center point)
         std::vector<std::vector<float>> V;
         std::vector<float> xnew;
-        xnew.push_back(points_.points[4].x);
-        xnew.push_back(points_.points[4].y);
+        xnew.push_back(Xstartx);
+        xnew.push_back(Xstarty);
         V.push_back(xnew);
-        points_.points.clear();
+
+        // Keep points visible for debugging
         shapes_pub_->publish(points_);
 
         MTRand drand;
