@@ -13,11 +13,11 @@ def generate_launch_description():
         ])
     )
 
-    # 启动SLAM和Nav2
+    # 启动RRT探索（新版ROS2）
     rrt_nav_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory('yahboomcar_nav_rrt'), 'launch'),
-            '/rrt_exploration.launch.py'
+            '/rrt_exploration_ros2.launch.py'
         ])
     )
 

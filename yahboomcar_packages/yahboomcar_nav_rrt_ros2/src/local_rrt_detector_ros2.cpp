@@ -16,9 +16,11 @@ public:
         this->declare_parameter("eta", 0.5);
         this->declare_parameter("map_topic", "/map");
         this->declare_parameter("range", 5.0);
+        this->declare_parameter("robot_frame", "base_link");
 
         eta_ = this->get_parameter("eta").as_double();
         range_ = this->get_parameter("range").as_double();
+        robot_frame_ = this->get_parameter("robot_frame").as_string();
         std::string map_topic = this->get_parameter("map_topic").as_string();
 
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
@@ -89,7 +91,7 @@ private:
         if (!initialized_) {
             try {
                 auto transform = tf_buffer_->lookupTransform(
-                    mapData_.header.frame_id, "base_link", tf2::TimePointZero);
+                    mapData_.header.frame_id, robot_frame_, tf2::TimePointZero);
                 robot_x_ = transform.transform.translation.x;
                 robot_y_ = transform.transform.translation.y;
                 initialized_ = true;
@@ -132,6 +134,7 @@ private:
     nav_msgs::msg::OccupancyGrid mapData_;
     visualization_msgs::msg::Marker points_, line_;
     float eta_, range_;
+    std::string robot_frame_;
     float robot_x_ = 0.0, robot_y_ = 0.0;
     bool initialized_ = false;
 };

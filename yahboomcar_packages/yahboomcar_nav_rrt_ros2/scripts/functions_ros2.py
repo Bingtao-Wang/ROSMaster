@@ -43,9 +43,10 @@ class robot:
         self.node.get_logger().info('Waiting for the robot transform')
         while rclpy.ok():
             try:
+                frame_id = self.name + '/' + self.robot_frame if self.name else self.robot_frame
                 trans = self.tf_buffer.lookup_transform(
                     self.global_frame,
-                    self.name+'/'+self.robot_frame,
+                    frame_id,
                     rclpy.time.Time())
                 break
             except Exception as e:
@@ -54,7 +55,8 @@ class robot:
         self.position = array([trans.transform.translation.x, trans.transform.translation.y])
         self.assigned_point = self.position
 
-        self.client = ActionClient(self.node, NavigateToPose, self.name+'/navigate_to_pose')
+        action_name = self.name + '/navigate_to_pose' if self.name else 'navigate_to_pose'
+        self.client = ActionClient(self.node, NavigateToPose, action_name)
         self.client.wait_for_server()
 
         self.goal_handle = None
@@ -66,9 +68,10 @@ class robot:
 
     def getPosition(self):
         try:
+            frame_id = self.name + '/' + self.robot_frame if self.name else self.robot_frame
             trans = self.tf_buffer.lookup_transform(
                 self.global_frame,
-                self.name+'/'+self.robot_frame,
+                frame_id,
                 rclpy.time.Time())
             self.position = array([trans.transform.translation.x, trans.transform.translation.y])
         except Exception as e:

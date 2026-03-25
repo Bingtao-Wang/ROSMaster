@@ -6,3 +6,6 @@ install/
 frames_*.gv
 frames_*.pdf
 .vscode/
+__pycache__/
+*.pyc
+*.pyo
