@@ -60,8 +60,8 @@ public:
         points_.color.r = 1.0;
         points_.color.a = line_.color.a = 1.0;
 
-        // Wait for initial points
-        while (points_.points.size() < 5 && rclcpp::ok()) {
+        // Wait for initial points (need 4 points to define exploration area)
+        while (points_.points.size() < 4 && rclcpp::ok()) {
             rclcpp::spin_some(this->get_node_base_interface());
             shapes_pub_->publish(points_);
         }
