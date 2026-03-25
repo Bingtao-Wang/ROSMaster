@@ -20,10 +20,21 @@ class robot:
         self.node = node
         self.assigned_point = []
         self.name = name
-        self.global_frame = node.get_parameter_or('global_frame', '/map').value
-        self.robot_frame = node.get_parameter_or('robot_frame', 'base_link').value
-        self.plan_service = node.get_parameter_or(
-            'plan_service', '/plan').value
+
+        if node.has_parameter('global_frame'):
+            self.global_frame = node.get_parameter('global_frame').value
+        else:
+            self.global_frame = 'map'
+
+        if node.has_parameter('robot_frame'):
+            self.robot_frame = node.get_parameter('robot_frame').value
+        else:
+            self.robot_frame = 'base_link'
+
+        if node.has_parameter('plan_service'):
+            self.plan_service = node.get_parameter('plan_service').value
+        else:
+            self.plan_service = '/plan'
 
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, node)

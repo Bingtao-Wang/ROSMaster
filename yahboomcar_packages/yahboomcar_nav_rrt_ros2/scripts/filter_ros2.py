@@ -50,7 +50,7 @@ class FilterNode(Node):
         self.map_sub = self.create_subscription(
             OccupancyGrid, map_topic, self.mapCallBack, 10)
 
-        for i in range(n_robots):
+        for i in range(self.n_robots):
             topic = namespace + str(i + namespace_init_count) + '/move_base/global_costmap/costmap'
             self.create_subscription(OccupancyGrid, topic, self.globalMapCallBack, 10)
 
