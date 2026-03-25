@@ -70,7 +70,14 @@
       "Bash(git branch:*)",
       "Bash(git commit:*)",
       "Bash(git remote:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(nmcli -f NAME,TYPE connection show)",
+      "Bash(nmcli -t -f active,ssid dev wifi)",
+      "Bash(sudo nmcli:*)",
+      "Bash(sudo grep:*)",
+      "Bash(sudo ls:*)",
+      "Bash(sudo cat:*)",
+      "Bash(git check-ignore:*)"
     ]
   }
 }
