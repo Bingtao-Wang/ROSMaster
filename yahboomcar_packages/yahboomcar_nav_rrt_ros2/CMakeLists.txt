@@ -34,18 +34,17 @@ ament_target_dependencies(save_map rclcpp std_msgs std_srvs)
 add_executable(rrt_save_map src/rrt_save_map.cpp)
 ament_target_dependencies(rrt_save_map rclcpp nav_msgs geometry_msgs)
 
-# RRT detector nodes (will be converted to ROS2)
-# add_executable(global_rrt_detector src/global_rrt_detector.cpp src/functions.cpp src/mtrand.cpp)
-# ament_target_dependencies(global_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
+add_executable(global_rrt_detector src/global_rrt_detector_ros2.cpp src/functions.cpp src/mtrand.cpp)
+ament_target_dependencies(global_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
 
-# add_executable(local_rrt_detector src/local_rrt_detector.cpp src/functions.cpp src/mtrand.cpp)
-# ament_target_dependencies(local_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
+add_executable(local_rrt_detector src/local_rrt_detector_ros2.cpp src/functions.cpp src/mtrand.cpp)
+ament_target_dependencies(local_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
 
 install(TARGETS
   save_map
   rrt_save_map
-  # global_rrt_detector
-  # local_rrt_detector
+  global_rrt_detector
+  local_rrt_detector
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -56,11 +55,11 @@ install(PROGRAMS
   scripts/spech_send_mark.py
   scripts/topic_relay.py
   scripts/tf_relay.py
-  scripts/filter.py
-  scripts/assigner.py
-  scripts/functions.py
-  scripts/getfrontier.py
-  scripts/frontier_opencv_detector.py
+  scripts/filter_ros2.py
+  scripts/assigner_ros2.py
+  scripts/functions_ros2.py
+  scripts/getfrontier_ros2.py
+  scripts/frontier_opencv_detector_ros2.py
   DESTINATION lib/${PROJECT_NAME}
 )
 
