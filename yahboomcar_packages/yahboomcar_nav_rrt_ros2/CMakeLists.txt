@@ -7,6 +7,7 @@ endif()
 
 find_package(ament_cmake REQUIRED)
 find_package(ament_cmake_python REQUIRED)
+find_package(rosidl_default_generators REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(rclpy REQUIRED)
 find_package(std_msgs REQUIRED)
@@ -15,6 +16,14 @@ find_package(nav_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
+find_package(tf2 REQUIRED)
+find_package(tf2_ros REQUIRED)
+
+# Generate messages
+rosidl_generate_interfaces(${PROJECT_NAME}
+  "msg/PointArray.msg"
+  DEPENDENCIES geometry_msgs
+)
 
 include_directories(include)
 
@@ -25,9 +34,18 @@ ament_target_dependencies(save_map rclcpp std_msgs std_srvs)
 add_executable(rrt_save_map src/rrt_save_map.cpp)
 ament_target_dependencies(rrt_save_map rclcpp nav_msgs geometry_msgs)
 
+# RRT detector nodes (will be converted to ROS2)
+# add_executable(global_rrt_detector src/global_rrt_detector.cpp src/functions.cpp src/mtrand.cpp)
+# ament_target_dependencies(global_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
+
+# add_executable(local_rrt_detector src/local_rrt_detector.cpp src/functions.cpp src/mtrand.cpp)
+# ament_target_dependencies(local_rrt_detector rclcpp geometry_msgs nav_msgs visualization_msgs tf2 tf2_ros)
+
 install(TARGETS
   save_map
   rrt_save_map
+  # global_rrt_detector
+  # local_rrt_detector
   DESTINATION lib/${PROJECT_NAME}
 )
 
@@ -38,6 +56,11 @@ install(PROGRAMS
   scripts/spech_send_mark.py
   scripts/topic_relay.py
   scripts/tf_relay.py
+  scripts/filter.py
+  scripts/assigner.py
+  scripts/functions.py
+  scripts/getfrontier.py
+  scripts/frontier_opencv_detector.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

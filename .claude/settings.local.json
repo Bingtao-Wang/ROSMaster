@@ -100,7 +100,8 @@
       "WebSearch",
       "Bash(codex:*)",
       "Bash(cp -r /tmp/rrt_exploration/src/*.cpp /home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/src/)",
-      "Bash(cp -r /tmp/rrt_exploration/scripts/*.py /home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/scripts/)"
+      "Bash(cp -r /tmp/rrt_exploration/scripts/*.py /home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/scripts/)",
+      "Bash(chmod:*)"
     ]
   }
 }
