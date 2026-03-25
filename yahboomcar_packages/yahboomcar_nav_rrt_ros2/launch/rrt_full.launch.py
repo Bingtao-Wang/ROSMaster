@@ -5,7 +5,7 @@ from ament_index_python.packages import get_package_share_directory
 import os
 
 def generate_launch_description():
-    # 使用yahboomcar官方的底盘+雷达launch（已处理命名空间）
+    # 底盘+雷达
     laser_bringup_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory('yahboomcar_nav'), 'launch'),
@@ -13,8 +13,24 @@ def generate_launch_description():
         ])
     )
 
-    # 启动RRT探索（新版ROS2）
-    rrt_nav_launch = IncludeLaunchDescription(
+    # SLAM建图
+    slam_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory('yahboomcar_nav_rrt'), 'launch/library'),
+            '/slam_toolbox.launch.py'
+        ])
+    )
+
+    # Nav2导航
+    nav2_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource([
+            os.path.join(get_package_share_directory('yahboomcar_nav_rrt'), 'launch/library'),
+            '/nav2.launch.py'
+        ])
+    )
+
+    # RRT探索
+    rrt_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource([
             os.path.join(get_package_share_directory('yahboomcar_nav_rrt'), 'launch'),
             '/rrt_exploration_ros2.launch.py'
@@ -23,5 +39,7 @@ def generate_launch_description():
 
     return LaunchDescription([
         laser_bringup_launch,
-        rrt_nav_launch,
+        slam_launch,
+        nav2_launch,
+        rrt_launch,
     ])
