@@ -27,6 +27,7 @@ class FilterNode(Node):
         self.declare_parameter('namespace', '')
         self.declare_parameter('namespace_init_count', 1)
         self.declare_parameter('rate', 100.0)
+        self.declare_parameter('global_costmap_topic', '/global_costmap/costmap')
 
         # Get parameters
         map_topic = self.get_parameter('map_topic').value
@@ -36,6 +37,7 @@ class FilterNode(Node):
         self.n_robots = self.get_parameter('n_robots').value
         namespace = self.get_parameter('namespace').value
         namespace_init_count = self.get_parameter('namespace_init_count').value
+        global_costmap_topic = self.get_parameter('global_costmap_topic').value
 
         # Initialize variables
         self.frontiers = []
@@ -52,10 +54,11 @@ class FilterNode(Node):
 
         for i in range(self.n_robots):
             if namespace:
-                topic = '/' + namespace + str(i + namespace_init_count) + '/move_base/global_costmap/costmap'
+                topic = '/' + namespace + str(i + namespace_init_count) + global_costmap_topic
             else:
-                topic = '/move_base/global_costmap/costmap'
-            self.create_subscription(OccupancyGrid, topic, self.globalMapCallBack, 10)
+                topic = global_costmap_topic
+            self.create_subscription(OccupancyGrid, topic,
+                lambda msg, idx=i: self.globalMapCallBack(msg, idx), 10)
 
         self.goals_sub = self.create_subscription(
             PointStamped, goals_topic, self.goalsCallBack, 10)
@@ -81,15 +84,8 @@ class FilterNode(Node):
     def mapCallBack(self, data):
         self.mapData = data
 
-    def globalMapCallBack(self, data):
-        if self.n_robots == 1:
-            self.globalmaps[0] = data
-        else:
-            # Extract robot index from topic
-            topic = data.header.frame_id
-            for i in range(self.n_robots):
-                self.globalmaps[i] = data
-                break
+    def globalMapCallBack(self, data, robot_idx):
+        self.globalmaps[robot_idx] = data
 
     def run(self):
         # Wait for map

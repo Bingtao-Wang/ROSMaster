@@ -56,7 +56,10 @@ class AssignerNode(Node):
         # Initialize robots
         self.robots = []
         for i in range(n_robots):
-            robot_name = namespace + str(i + namespace_init_count)
+            if namespace:
+                robot_name = namespace + str(i + namespace_init_count)
+            else:
+                robot_name = '' if n_robots == 1 else str(i + namespace_init_count)
             self.robots.append(robot(self, robot_name))
 
         self.get_logger().info('Assigner node initialized')

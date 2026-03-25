@@ -57,6 +57,9 @@ class robot:
         self.client = ActionClient(self.node, NavigateToPose, self.name+'/navigate_to_pose')
         self.client.wait_for_server()
 
+        self.goal_handle = None
+        self.goal_status = 0  # 0: idle, 1: busy
+
         self.make_plan_client = self.node.create_client(GetPlan, self.name+self.plan_service)
         robot.start.header.frame_id = self.global_frame
         robot.end.header.frame_id = self.global_frame
@@ -79,11 +82,28 @@ class robot:
         goal_msg.pose.pose.position.x = float(point[0])
         goal_msg.pose.pose.position.y = float(point[1])
         goal_msg.pose.pose.orientation.w = 1.0
-        self.client.send_goal_async(goal_msg)
+
+        self.goal_status = 1  # busy
+        future = self.client.send_goal_async(goal_msg)
+        future.add_done_callback(self._goal_response_callback)
         self.assigned_point = array(point)
 
+    def _goal_response_callback(self, future):
+        self.goal_handle = future.result()
+        if self.goal_handle.accepted:
+            result_future = self.goal_handle.get_result_async()
+            result_future.add_done_callback(self._goal_result_callback)
+
+    def _goal_result_callback(self, future):
+        self.goal_status = 0  # idle
+
+    def getState(self):
+        return self.goal_status
+
     def cancelGoal(self):
-        self.client._cancel_goal_async()
+        if self.goal_handle:
+            self.goal_handle.cancel_goal_async()
+        self.goal_status = 0
         self.assigned_point = self.getPosition()
 # ________________________________________________________________________________
 
