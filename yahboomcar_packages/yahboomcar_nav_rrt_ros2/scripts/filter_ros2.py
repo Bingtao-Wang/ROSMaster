@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 
-# ROS2 conversion of filter.py
 from copy import copy
+import numpy as np
 import rclpy
 from rclpy.node import Node
-from visualization_msgs.msg import Marker, MarkerArray
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point, PointStamped
 from nav_msgs.msg import OccupancyGrid
 from tf2_ros import Buffer, TransformListener
-from numpy import array, vstack, delete
+import tf2_geometry_msgs  # noqa: F401
 from functions_ros2 import gridValue, informationGain
 from sklearn.cluster import MeanShift
 from yahboomcar_nav_rrt.msg import PointArray
@@ -18,7 +19,6 @@ class FilterNode(Node):
     def __init__(self):
         super().__init__('filter')
 
-        # Declare parameters
         self.declare_parameter('map_topic', '/map')
         self.declare_parameter('info_radius', 1.0)
         self.declare_parameter('costmap_clearing_threshold', 70.0)
@@ -26,60 +26,85 @@ class FilterNode(Node):
         self.declare_parameter('n_robots', 1)
         self.declare_parameter('namespace', '')
         self.declare_parameter('namespace_init_count', 1)
-        self.declare_parameter('rate', 100.0)
+        self.declare_parameter('rate', 10.0)
         self.declare_parameter('global_costmap_topic', '/global_costmap/costmap')
 
-        # Get parameters
         map_topic = self.get_parameter('map_topic').value
-        self.info_radius = self.get_parameter('info_radius').value
-        self.costmap_clearing_threshold = self.get_parameter('costmap_clearing_threshold').value
+        self.info_radius = float(self.get_parameter('info_radius').value)
+        self.costmap_clearing_threshold = float(self.get_parameter('costmap_clearing_threshold').value)
         goals_topic = self.get_parameter('goals_topic').value
-        self.n_robots = self.get_parameter('n_robots').value
+        self.n_robots = int(self.get_parameter('n_robots').value)
         namespace = self.get_parameter('namespace').value
-        namespace_init_count = self.get_parameter('namespace_init_count').value
+        namespace_init_count = int(self.get_parameter('namespace_init_count').value)
+        self.rate_hz = float(self.get_parameter('rate').value)
         global_costmap_topic = self.get_parameter('global_costmap_topic').value
 
-        # Initialize variables
-        self.frontiers = []
+        self.frontiers = np.empty((0, 2), dtype=float)
         self.mapData = OccupancyGrid()
         self.globalmaps = [OccupancyGrid() for _ in range(self.n_robots)]
+        self.wait_state = ''
+        self.last_wait_log_ns = 0
 
-        # TF
+        latched_qos = QoSProfile(depth=1)
+        latched_qos.reliability = ReliabilityPolicy.RELIABLE
+        latched_qos.durability = DurabilityPolicy.TRANSIENT_LOCAL
+
         self.tf_buffer = Buffer()
         self.tf_listener = TransformListener(self.tf_buffer, self)
 
-        # Subscribers
         self.map_sub = self.create_subscription(
-            OccupancyGrid, map_topic, self.mapCallBack, 10)
+            OccupancyGrid, map_topic, self.mapCallBack, latched_qos)
 
+        self.global_costmap_subs = []
         for i in range(self.n_robots):
             if namespace:
                 topic = '/' + namespace + str(i + namespace_init_count) + global_costmap_topic
             else:
                 topic = global_costmap_topic
-            self.create_subscription(OccupancyGrid, topic,
-                lambda msg, idx=i: self.globalMapCallBack(msg, idx), 10)
+            sub = self.create_subscription(
+                OccupancyGrid,
+                topic,
+                lambda msg, idx=i: self.globalMapCallBack(msg, idx),
+                latched_qos)
+            self.global_costmap_subs.append(sub)
 
         self.goals_sub = self.create_subscription(
-            PointStamped, goals_topic, self.goalsCallBack, 10)
+            PointStamped, goals_topic, self.goalsCallBack, 50)
 
-        # Publishers
         self.frontiers_pub = self.create_publisher(Marker, 'frontiers', 10)
         self.centroids_pub = self.create_publisher(Marker, 'centroids', 10)
         self.filtered_pub = self.create_publisher(PointArray, 'filtered_points', 10)
 
+        self.timer = self.create_timer(max(0.05, 1.0 / max(self.rate_hz, 1.0)), self.on_timer)
         self.get_logger().info('Filter node initialized')
 
+    def throttled_info(self, msg):
+        now_ns = self.get_clock().now().nanoseconds
+        if self.wait_state != msg or now_ns - self.last_wait_log_ns > 2_000_000_000:
+            self.get_logger().info(msg)
+            self.wait_state = msg
+            self.last_wait_log_ns = now_ns
+
+    def clear_wait_state(self):
+        self.wait_state = ''
+
     def goalsCallBack(self, data):
+        if len(self.mapData.data) < 1 or not self.mapData.header.frame_id:
+            return
+
         try:
-            transformed = self.tf_buffer.transform(data, self.mapData.header.frame_id)
-            x = array([transformed.point.x, transformed.point.y])
-            if len(self.frontiers) > 0:
-                self.frontiers = vstack((self.frontiers, [x]))
+            if (not data.header.frame_id) or data.header.frame_id == self.mapData.header.frame_id:
+                transformed = data
             else:
-                self.frontiers = [x]
-        except Exception as e:
-            self.get_logger().warn(f'Transform failed: {e}')
+                transformed = self.tf_buffer.transform(data, self.mapData.header.frame_id)
+
+            x = np.array([[transformed.point.x, transformed.point.y]], dtype=float)
+            if len(self.frontiers) > 0:
+                self.frontiers = np.vstack((self.frontiers, x))
+            else:
+                self.frontiers = x
+        except Exception as exc:
+            self.get_logger().warn(f'Transform failed in goalsCallBack: {exc}')
 
     def mapCallBack(self, data):
         self.mapData = data
@@ -87,28 +112,14 @@ class FilterNode(Node):
     def globalMapCallBack(self, data, robot_idx):
         self.globalmaps[robot_idx] = data
 
-    def run(self):
-        # Wait for map
-        while len(self.mapData.data) < 1 and rclpy.ok():
-            self.get_logger().info('Waiting for map')
-            rclpy.spin_once(self, timeout_sec=0.1)
+    def publish_outputs(self, raw_frontiers, centroids):
+        frame_id = self.mapData.header.frame_id if self.mapData.header.frame_id else 'map'
+        now = self.get_clock().now().to_msg()
 
-        # Wait for global costmaps
-        for i in range(self.n_robots):
-            while len(self.globalmaps[i].data) < 1 and rclpy.ok():
-                self.get_logger().info('Waiting for global costmap')
-                rclpy.spin_once(self, timeout_sec=0.1)
-
-        self.get_logger().info('Map and global costmaps received')
-
-        # Wait for frontiers
-        while len(self.frontiers) < 1 and rclpy.ok():
-            rclpy.spin_once(self, timeout_sec=0.1)
-
-        # Initialize markers
         points = Marker()
-        points.header.frame_id = self.mapData.header.frame_id
-        points.ns = "markers2"
+        points.header.frame_id = frame_id
+        points.header.stamp = now
+        points.ns = 'markers2'
         points.id = 0
         points.type = Marker.POINTS
         points.action = Marker.ADD
@@ -121,8 +132,9 @@ class FilterNode(Node):
         points.color.a = 1.0
 
         points_clust = Marker()
-        points_clust.header.frame_id = self.mapData.header.frame_id
-        points_clust.ns = "markers3"
+        points_clust.header.frame_id = frame_id
+        points_clust.header.stamp = now
+        points_clust.ns = 'markers3'
         points_clust.id = 4
         points_clust.type = Marker.POINTS
         points_clust.action = Marker.ADD
@@ -134,86 +146,96 @@ class FilterNode(Node):
         points_clust.color.b = 0.0
         points_clust.color.a = 1.0
 
-        rate = self.create_rate(100)
+        arraypoints = PointArray()
 
-        # Main loop
-        while rclpy.ok():
-            centroids = []
-            front = copy(self.frontiers)
+        for point_xy in raw_frontiers:
+            p = Point()
+            p.x = float(point_xy[0])
+            p.y = float(point_xy[1])
+            p.z = 0.0
+            points.points.append(p)
 
-            # Clustering
-            if len(front) > 1:
+        for point_xy in centroids:
+            p = Point()
+            p.x = float(point_xy[0])
+            p.y = float(point_xy[1])
+            p.z = 0.0
+            points_clust.points.append(p)
+            arraypoints.points.append(copy(p))
+
+        self.filtered_pub.publish(arraypoints)
+        self.frontiers_pub.publish(points)
+        self.centroids_pub.publish(points_clust)
+
+    def on_timer(self):
+        if len(self.mapData.data) < 1 or not self.mapData.header.frame_id:
+            self.throttled_info('Waiting for map')
+            return
+
+        for global_map in self.globalmaps:
+            if len(global_map.data) < 1:
+                self.throttled_info('Waiting for global costmap')
+                self.publish_outputs(np.empty((0, 2), dtype=float), np.empty((0, 2), dtype=float))
+                return
+
+        if len(self.frontiers) < 1:
+            self.throttled_info('Waiting for frontiers')
+            self.publish_outputs(np.empty((0, 2), dtype=float), np.empty((0, 2), dtype=float))
+            return
+
+        self.clear_wait_state()
+
+        front = np.array(self.frontiers, dtype=float)
+        raw_frontiers = np.empty((0, 2), dtype=float)
+
+        if len(front) > 1:
+            try:
                 ms = MeanShift(bandwidth=0.3)
                 ms.fit(front)
-                centroids = ms.cluster_centers_
-            elif len(front) == 1:
-                centroids = front
+                raw_frontiers = ms.cluster_centers_
+            except Exception as exc:
+                self.get_logger().warn(f'MeanShift failed, using raw frontiers: {exc}')
+                raw_frontiers = front
+        elif len(front) == 1:
+            raw_frontiers = front
 
-            self.frontiers = copy(centroids)
+        centroids = np.array(raw_frontiers, dtype=float)
+        self.frontiers = np.array(raw_frontiers, dtype=float)
 
-            # Clear old frontiers
-            z = 0
-            while z < len(centroids):
-                cond = False
-                temppoint = PointStamped()
-                temppoint.header.frame_id = self.mapData.header.frame_id
-                temppoint.header.stamp = rclpy.time.Time().to_msg()
-                temppoint.point.x = centroids[z][0]
-                temppoint.point.y = centroids[z][1]
-                temppoint.point.z = 0.0
+        z = 0
+        while z < len(centroids):
+            cond = False
+            temp_point = PointStamped()
+            temp_point.header.frame_id = self.mapData.header.frame_id
+            temp_point.header.stamp = self.get_clock().now().to_msg()
+            temp_point.point.x = float(centroids[z][0])
+            temp_point.point.y = float(centroids[z][1])
+            temp_point.point.z = 0.0
 
-                for i in range(self.n_robots):
-                    try:
-                        transformed = self.tf_buffer.transform(
-                            temppoint, self.globalmaps[i].header.frame_id)
-                        x = array([transformed.point.x, transformed.point.y])
-                        cond = (gridValue(self.globalmaps[i], x) > self.costmap_clearing_threshold) or cond
-                    except:
-                        pass
+            for global_map in self.globalmaps:
+                try:
+                    if (not global_map.header.frame_id) or global_map.header.frame_id == temp_point.header.frame_id:
+                        x = np.array([temp_point.point.x, temp_point.point.y], dtype=float)
+                    else:
+                        transformed = self.tf_buffer.transform(temp_point, global_map.header.frame_id)
+                        x = np.array([transformed.point.x, transformed.point.y], dtype=float)
+                    cond = (gridValue(global_map, x) > self.costmap_clearing_threshold) or cond
+                except Exception:
+                    pass
 
-                if cond or informationGain(self.mapData, [centroids[z][0], centroids[z][1]], self.info_radius*0.5) < 0.2:
-                    centroids = delete(centroids, z, axis=0)
-                    z -= 1
-                z += 1
+            if cond or informationGain(self.mapData, [centroids[z][0], centroids[z][1]], self.info_radius * 0.5) < 0.2:
+                centroids = np.delete(centroids, z, axis=0)
+                z -= 1
+            z += 1
 
-            # Publish filtered points
-            arraypoints = PointArray()
-            for i in centroids:
-                tempPoint = Point()
-                tempPoint.x = float(i[0])
-                tempPoint.y = float(i[1])
-                tempPoint.z = 0.0
-                arraypoints.points.append(tempPoint)
-            self.filtered_pub.publish(arraypoints)
-
-            # Publish markers
-            points.header.stamp = self.get_clock().now().to_msg()
-            points.points = []
-            for q in range(len(self.frontiers)):
-                p = Point()
-                p.x = float(self.frontiers[q][0])
-                p.y = float(self.frontiers[q][1])
-                p.z = 0.0
-                points.points.append(p)
-            self.frontiers_pub.publish(points)
-
-            points_clust.header.stamp = self.get_clock().now().to_msg()
-            points_clust.points = []
-            for q in range(len(centroids)):
-                p = Point()
-                p.x = float(centroids[q][0])
-                p.y = float(centroids[q][1])
-                p.z = 0.0
-                points_clust.points.append(p)
-            self.centroids_pub.publish(points_clust)
-
-            rate.sleep()
+        self.publish_outputs(raw_frontiers, centroids)
 
 
 def main(args=None):
     rclpy.init(args=args)
     node = FilterNode()
-    node.run()
+    rclpy.spin(node)
+    node.destroy_node()
     rclpy.shutdown()
 
 

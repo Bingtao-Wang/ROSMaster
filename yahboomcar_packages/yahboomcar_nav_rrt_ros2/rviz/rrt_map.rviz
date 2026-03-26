@@ -381,20 +381,20 @@ Visualization Manager:
       Value: true
     - Class: rviz/Marker
       Enabled: true
-      Marker Topic: /global_detector_shapes
-      Name: Marker
+      Marker Topic: /shapes
+      Name: RRT_Tree
       Namespaces:
         {}
       Queue Size: 100
       Value: true
     - Class: rviz/Marker
-      Enabled: true
+      Enabled: false
       Marker Topic: /local_detector_shapes
-      Name: Marker
+      Name: Legacy_Local_Tree
       Namespaces:
         {}
       Queue Size: 100
-      Value: true
+      Value: false
     - Class: rviz/Marker
       Enabled: true
       Marker Topic: /centroids

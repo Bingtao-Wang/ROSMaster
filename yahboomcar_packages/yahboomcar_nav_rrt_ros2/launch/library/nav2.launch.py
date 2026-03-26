@@ -25,6 +25,14 @@ def generate_launch_description():
         parameters=[nav2_params]
     )
 
+    behavior_server = Node(
+        package='nav2_behaviors',
+        executable='behavior_server',
+        name='behavior_server',
+        output='screen',
+        parameters=[nav2_params]
+    )
+
     bt_navigator = Node(
         package='nav2_bt_navigator',
         executable='bt_navigator',
@@ -44,6 +52,7 @@ def generate_launch_description():
             'node_names': [
                 'controller_server',
                 'planner_server',
+                'behavior_server',
                 'bt_navigator',
             ],
         }]
@@ -52,6 +61,7 @@ def generate_launch_description():
     return LaunchDescription([
         controller_server,
         planner_server,
+        behavior_server,
         bt_navigator,
         lifecycle_manager_navigation,
     ])

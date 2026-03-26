@@ -22,9 +22,10 @@ public:
         range_ = this->get_parameter("range").as_double();
         robot_frame_ = this->get_parameter("robot_frame").as_string();
         std::string map_topic = this->get_parameter("map_topic").as_string();
+        auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
 
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            map_topic, 10, std::bind(&LocalRRTDetector::mapCallback, this, std::placeholders::_1));
+            map_topic, map_qos, std::bind(&LocalRRTDetector::mapCallback, this, std::placeholders::_1));
 
         clicked_sub_ = this->create_subscription<geometry_msgs::msg::PointStamped>(
             "/clicked_point", 10, std::bind(&LocalRRTDetector::clickedCallback, this, std::placeholders::_1));
@@ -51,6 +52,7 @@ public:
             std::chrono::milliseconds(10),
             std::bind(&LocalRRTDetector::rrtLoop, this));
 
+        (void)timer;
         rclcpp::spin(this->shared_from_this());
     }
 
@@ -147,7 +149,3 @@ int main(int argc, char** argv)
     rclcpp::shutdown();
     return 0;
 }
-
-
-
-

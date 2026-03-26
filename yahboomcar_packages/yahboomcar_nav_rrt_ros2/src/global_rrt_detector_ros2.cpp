@@ -2,8 +2,6 @@
 #include "nav_msgs/msg/occupancy_grid.hpp"
 #include "geometry_msgs/msg/point_stamped.hpp"
 #include "visualization_msgs/msg/marker.hpp"
-#include "tf2_ros/transform_listener.h"
-#include "tf2_ros/buffer.h"
 #include "functions.h"
 #include "mtrand.h"
 #include <vector>
@@ -20,9 +18,10 @@ public:
 
         eta_ = this->get_parameter("eta").as_double();
         std::string map_topic = this->get_parameter("map_topic").as_string();
+        auto map_qos = rclcpp::QoS(rclcpp::KeepLast(1)).reliable().transient_local();
 
         map_sub_ = this->create_subscription<nav_msgs::msg::OccupancyGrid>(
-            map_topic, 10, std::bind(&GlobalRRTDetector::mapCallback, this, std::placeholders::_1));
+            map_topic, map_qos, std::bind(&GlobalRRTDetector::mapCallback, this, std::placeholders::_1));
 
         clicked_sub_ = this->create_subscription<geometry_msgs::msg::PointStamped>(
             "/clicked_point", 10, std::bind(&GlobalRRTDetector::clickedCallback, this, std::placeholders::_1));
@@ -71,32 +70,38 @@ public:
         float min_y = std::min({points_.points[0].y, points_.points[1].y, points_.points[2].y, points_.points[3].y});
         float max_y = std::max({points_.points[0].y, points_.points[1].y, points_.points[2].y, points_.points[3].y});
 
-        float init_map_x = max_x - min_x;
-        float init_map_y = max_y - min_y;
-        float Xstartx = (min_x + max_x) * 0.5f;
-        float Xstarty = (min_y + max_y) * 0.5f;
+        // If the seed lies outside the clicked bbox, expand the RRT area so the
+        // initial tree root is always sampled inside a valid exploration window.
+        min_x = std::min(min_x, static_cast<float>(seed.x));
+        max_x = std::max(max_x, static_cast<float>(seed.x));
+        min_y = std::min(min_y, static_cast<float>(seed.y));
+        max_y = std::max(max_y, static_cast<float>(seed.y));
 
-        std::vector<std::vector<float>> V;
-        std::vector<float> xnew;
-        xnew.push_back(seed.x);
-        xnew.push_back(seed.y);
-        V.push_back(xnew);
+        const float margin = std::max(eta_ * 2.0f, 0.5f);
+        min_x -= margin;
+        max_x += margin;
+        min_y -= margin;
+        max_y += margin;
+
+        init_map_x_ = max_x - min_x;
+        init_map_y_ = max_y - min_y;
+        x_start_x_ = (min_x + max_x) * 0.5f;
+        x_start_y_ = (min_y + max_y) * 0.5f;
+        tree_.clear();
+        tree_.push_back({seed.x, seed.y});
 
         RCLCPP_INFO(
             this->get_logger(),
             "RRT area initialized: bbox=[%.2f, %.2f] x [%.2f, %.2f], seed=(%.2f, %.2f), width=%.2f, height=%.2f",
-            min_x, max_x, min_y, max_y, seed.x, seed.y, init_map_x, init_map_y);
+            min_x, max_x, min_y, max_y, seed.x, seed.y, init_map_x_, init_map_y_);
 
         points_.points.clear();
         shapes_pub_->publish(points_);
 
-        auto timer = this->create_wall_timer(
+        timer_ = this->create_wall_timer(
             std::chrono::milliseconds(10),
-            [this, &V, init_map_x, init_map_y, Xstartx, Xstarty]() {
-                rrtLoop(V, init_map_x, init_map_y, Xstartx, Xstarty);
-            });
+            std::bind(&GlobalRRTDetector::rrtLoop, this));
 
-        (void)timer;
         rclcpp::spin(this->shared_from_this());
     }
 
@@ -115,18 +120,17 @@ private:
         points_.points.push_back(p);
     }
 
-    void rrtLoop(std::vector<std::vector<float>>& V,
-                 float init_map_x, float init_map_y, float Xstartx, float Xstarty)
+    void rrtLoop()
     {
         static MTRand drand;
         std::vector<float> x_rand, x_nearest, x_new;
 
-        float xr = (drand() * init_map_x) - (init_map_x * 0.5f) + Xstartx;
-        float yr = (drand() * init_map_y) - (init_map_y * 0.5f) + Xstarty;
+        float xr = (drand() * init_map_x_) - (init_map_x_ * 0.5f) + x_start_x_;
+        float yr = (drand() * init_map_y_) - (init_map_y_ * 0.5f) + x_start_y_;
         x_rand.push_back(xr);
         x_rand.push_back(yr);
 
-        x_nearest = Nearest(V, x_rand);
+        x_nearest = Nearest(tree_, x_rand);
         x_new = Steer(x_nearest, x_rand, eta_);
 
         int checking = ObstacleFree(x_nearest, x_new, mapData_);
@@ -149,7 +153,7 @@ private:
             points_.points.clear();
         }
         else if (checking == 1) {
-            V.push_back(x_new);
+            tree_.push_back(x_new);
 
             geometry_msgs::msg::Point p;
             p.x = x_new[0];
@@ -168,10 +172,16 @@ private:
     rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr clicked_sub_;
     rclcpp::Publisher<geometry_msgs::msg::PointStamped>::SharedPtr targets_pub_;
     rclcpp::Publisher<visualization_msgs::msg::Marker>::SharedPtr shapes_pub_;
+    rclcpp::TimerBase::SharedPtr timer_;
 
     nav_msgs::msg::OccupancyGrid mapData_;
     visualization_msgs::msg::Marker points_, line_;
+    std::vector<std::vector<float>> tree_;
     float eta_;
+    float init_map_x_ = 0.0f;
+    float init_map_y_ = 0.0f;
+    float x_start_x_ = 0.0f;
+    float x_start_y_ = 0.0f;
 };
 
 int main(int argc, char** argv)
