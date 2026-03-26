@@ -5,10 +5,12 @@ from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument, TimerAction
 from launch.substitutions import LaunchConfiguration
 
+
 def generate_launch_description():
     return LaunchDescription([
-        # Parameters
-        DeclareLaunchArgument('eta', default_value='0.5'),
+        DeclareLaunchArgument('local_eta', default_value='0.5'),
+        DeclareLaunchArgument('global_eta', default_value='2.0'),
+        DeclareLaunchArgument('local_range', default_value='5.0'),
         DeclareLaunchArgument('map_topic', default_value='/map'),
         DeclareLaunchArgument('info_radius', default_value='1.0'),
         DeclareLaunchArgument('global_costmap_topic', default_value='/global_costmap/costmap'),
@@ -16,7 +18,6 @@ def generate_launch_description():
         DeclareLaunchArgument('robot_frame', default_value='base_link'),
         DeclareLaunchArgument('global_frame', default_value='map'),
 
-        # Delay RRT nodes to allow SLAM and Nav2 to initialize
         TimerAction(
             period=8.0,
             actions=[
@@ -25,7 +26,7 @@ def generate_launch_description():
                     executable='global_rrt_detector',
                     name='global_rrt_detector',
                     parameters=[{
-                        'eta': LaunchConfiguration('eta'),
+                        'eta': LaunchConfiguration('global_eta'),
                         'map_topic': LaunchConfiguration('map_topic'),
                     }],
                     output='screen'
@@ -35,7 +36,8 @@ def generate_launch_description():
                     executable='local_rrt_detector',
                     name='local_rrt_detector',
                     parameters=[{
-                        'eta': LaunchConfiguration('eta'),
+                        'eta': LaunchConfiguration('local_eta'),
+                        'range': LaunchConfiguration('local_range'),
                         'map_topic': LaunchConfiguration('map_topic'),
                         'robot_frame': LaunchConfiguration('robot_frame'),
                     }],

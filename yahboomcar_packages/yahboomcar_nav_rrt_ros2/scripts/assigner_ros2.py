@@ -6,6 +6,8 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import OccupancyGrid
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
 from yahboomcar_nav_rrt.msg import PointArray
 from functions_ros2 import robot, informationGain, discount
 from numpy.linalg import norm
@@ -51,6 +53,7 @@ class AssignerNode(Node):
         self.last_wait_log_ns = 0
         self.last_sent_target = None
         self.last_sent_target_time_ns = 0
+        self.goal_visual_active = False
 
         latched_map_qos = QoSProfile(depth=1)
         latched_map_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -60,6 +63,7 @@ class AssignerNode(Node):
             OccupancyGrid, map_topic, self.mapCallBack, latched_map_qos)
         self.frontiers_sub = self.create_subscription(
             PointArray, frontiers_topic, self.callBack, 10)
+        self.goal_marker_pub = self.create_publisher(Marker, 'assigned_goal_marker', 10)
 
         self.robots = []
         for i in range(n_robots):
@@ -82,6 +86,77 @@ class AssignerNode(Node):
     def clear_wait_state(self):
         self.wait_state = ''
 
+    def goal_frame_id(self):
+        if self.mapData.header.frame_id:
+            return self.mapData.header.frame_id
+        return 'map'
+
+    def publish_goal_visualization(self, robot_position, goal_point):
+        frame_id = self.goal_frame_id()
+        now = self.get_clock().now().to_msg()
+
+        goal_marker = Marker()
+        goal_marker.header.frame_id = frame_id
+        goal_marker.header.stamp = now
+        goal_marker.ns = 'assigned_goal'
+        goal_marker.id = 0
+        goal_marker.type = Marker.SPHERE
+        goal_marker.action = Marker.ADD
+        goal_marker.pose.orientation.w = 1.0
+        goal_marker.pose.position.x = float(goal_point[0])
+        goal_marker.pose.position.y = float(goal_point[1])
+        goal_marker.pose.position.z = 0.0
+        goal_marker.scale.x = 0.45
+        goal_marker.scale.y = 0.45
+        goal_marker.scale.z = 0.45
+        goal_marker.color.r = 1.0
+        goal_marker.color.g = 0.0
+        goal_marker.color.b = 0.0
+        goal_marker.color.a = 0.95
+        self.goal_marker_pub.publish(goal_marker)
+
+        line_marker = Marker()
+        line_marker.header.frame_id = frame_id
+        line_marker.header.stamp = now
+        line_marker.ns = 'assigned_goal'
+        line_marker.id = 1
+        line_marker.type = Marker.LINE_STRIP
+        line_marker.action = Marker.ADD
+        line_marker.pose.orientation.w = 1.0
+        line_marker.scale.x = 0.12
+        line_marker.color.r = 0.0
+        line_marker.color.g = 1.0
+        line_marker.color.b = 1.0
+        line_marker.color.a = 1.0
+
+        p_robot = Point()
+        p_robot.x = float(robot_position[0])
+        p_robot.y = float(robot_position[1])
+        p_robot.z = 0.0
+        p_goal = Point()
+        p_goal.x = float(goal_point[0])
+        p_goal.y = float(goal_point[1])
+        p_goal.z = 0.0
+        line_marker.points = [p_robot, p_goal]
+        self.goal_marker_pub.publish(line_marker)
+        self.goal_visual_active = True
+
+    def clear_goal_visualization(self):
+        if not self.goal_visual_active:
+            return
+
+        now = self.get_clock().now().to_msg()
+        frame_id = self.goal_frame_id()
+        for marker_id in (0, 1):
+            marker = Marker()
+            marker.header.frame_id = frame_id
+            marker.header.stamp = now
+            marker.ns = 'assigned_goal'
+            marker.id = marker_id
+            marker.action = Marker.DELETE
+            self.goal_marker_pub.publish(marker)
+        self.goal_visual_active = False
+
     def callBack(self, data):
         self.frontiers = []
         for point in data.points:
@@ -91,6 +166,22 @@ class AssignerNode(Node):
         self.mapData = data
 
     def on_timer(self):
+        available = []
+        busy = []
+        robot_positions = {}
+        for idx, robot_obj in enumerate(self.robots):
+            robot_positions[idx] = robot_obj.getPosition()
+            if robot_obj.getState() == 1 and len(robot_obj.assigned_point) > 0:
+                busy.append(idx)
+            else:
+                available.append(idx)
+
+        if busy:
+            first_busy = busy[0]
+            self.publish_goal_visualization(robot_positions[first_busy], self.robots[first_busy].assigned_point)
+        else:
+            self.clear_goal_visualization()
+
         if len(self.mapData.data) < 1:
             self.throttled_info('Waiting for map')
             return
@@ -108,15 +199,6 @@ class AssignerNode(Node):
         for centroid in centroids:
             info_gain.append(informationGain(self.mapData, [centroid[0], centroid[1]], self.info_radius))
 
-        available = []
-        busy = []
-        for idx, robot_obj in enumerate(self.robots):
-            robot_obj.getPosition()
-            if robot_obj.getState() == 1:
-                busy.append(idx)
-            else:
-                available.append(idx)
-
         if len(available) < 1:
             return
 
@@ -132,7 +214,7 @@ class AssignerNode(Node):
 
         for robot_idx in available:
             robot_obj = self.robots[robot_idx]
-            robot_position = robot_obj.getPosition()
+            robot_position = robot_positions[robot_idx]
             for centroid_idx, centroid in enumerate(centroids):
                 cost = norm(robot_position - centroid)
                 if cost < self.min_target_distance:
@@ -156,7 +238,8 @@ class AssignerNode(Node):
             return
 
         winner_idx = revenue_record.index(max(revenue_record))
-        robot_obj = self.robots[id_record[winner_idx]]
+        robot_idx = id_record[winner_idx]
+        robot_obj = self.robots[robot_idx]
         target = np.array(centroid_record[winner_idx], dtype=float)
 
         if len(robot_obj.assigned_point) > 0 and norm(robot_obj.assigned_point - target) < self.repeat_target_radius:
@@ -171,7 +254,8 @@ class AssignerNode(Node):
         robot_obj.sendGoal(target)
         self.last_sent_target = np.array(target, dtype=float)
         self.last_sent_target_time_ns = self.get_clock().now().nanoseconds
-        self.get_logger().info(f'Robot {id_record[winner_idx]} assigned to {target}')
+        self.publish_goal_visualization(robot_positions[robot_idx], target)
+        self.get_logger().info(f'Robot {robot_idx} assigned to {target}')
 
 
 def main(args=None):
