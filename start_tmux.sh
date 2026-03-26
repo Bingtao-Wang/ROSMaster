@@ -19,8 +19,8 @@ fi
 
 tmux new-session -d -s "$SESSION_NAME" "bash -lc 'claude --dangerously-skip-permissions; exec bash'"
 tmux split-window -h -t "$SESSION_NAME":0 "bash -lc 'codex; exec bash'"
-tmux set-option -t "$SESSION_NAME" -g mouse off
+tmux set-option -t "$SESSION_NAME" -g mouse on
 tmux set-option -t "$SESSION_NAME" -g set-clipboard off
 
-tmux display-message -t "$SESSION_NAME" "Session $SESSION_NAME started (mouse=off, set-clipboard=off)"
+tmux display-message -t "$SESSION_NAME" "Session $SESSION_NAME started (mouse=on, set-clipboard=off)"
 tmux attach -t "$SESSION_NAME"
