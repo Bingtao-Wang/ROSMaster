@@ -18,6 +18,33 @@
 
 ## Important Rules
 
+### 0. ROS2 Launch 管理规则（重要！）
+**每次启动新的ROS2 launch文件前，必须先停止旧的进程，避免节点重复**
+
+**推荐方式：使用启动脚本（自动清理+验证）**
+```bash
+cd /home/jetson/wbt_ws/WBT_ROS2_WS
+./start_rrt.sh
+```
+
+**手动方式：**
+```bash
+# 1. 停止所有旧进程
+pkill -9 -f "rrt_full.launch.py"
+pkill -9 -f "display_map_launch.py"
+killall -9 bt_navigator controller_server planner_server global_rrt_detector local_rrt_detector sllidar_node rviz2 2>/dev/null
+sleep 3
+
+# 2. 验证清理（必须！）
+ros2 node list | grep -E "bt_navigator|controller_server|planner_server|global_rrt|local_rrt|sllidar|rviz" | wc -l
+# 输出必须为0，否则不要启动
+
+# 3. 启动新的
+ros2 launch yahboomcar_nav_rrt rrt_full.launch.py
+```
+
+**原因**：重复的节点会导致话题订阅混乱，系统严重混乱（可能出现7个Nav2节点）。
+
 ### 1. Source Code Protection
 - **`yahboomcar_ws/`** is a symlink to `/home/jetson/yahboomcar_ros2_ws/yahboomcar_ws`
 - **DO NOT modify files in `_yahboomcar_ws/` directly**

@@ -94,11 +94,11 @@ return out;
 
 // ObstacleFree function-------------------------------------
 
-char ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew, nav_msgs::msg::OccupancyGrid mapsub){
+int ObstacleFree(std::vector<float> xnear, std::vector<float> &xnew, nav_msgs::msg::OccupancyGrid mapsub){
 float rez=float(mapsub.info.resolution)*.2;
 float stepz=int(ceil(Norm(xnew,xnear))/rez);
 std::vector<float> xi=xnear;
-char  obs=0; char unk=0;
+int obs=0; int unk=0;
 
 geometry_msgs::msg::Point p;
 for (int c=0;c<stepz;c++){
@@ -109,7 +109,7 @@ for (int c=0;c<stepz;c++){
 
    if (gridValue(mapsub,xi) ==-1){      unk=1;	break;}
   }
-char out=0;
+int out=0;
  xnew=xi;
  if (unk==1){  out=-1;}
 

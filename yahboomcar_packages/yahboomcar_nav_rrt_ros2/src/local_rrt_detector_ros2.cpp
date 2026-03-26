@@ -111,7 +111,7 @@ private:
         x_nearest = {robot_x_, robot_y_};
         x_new = Steer(x_nearest, x_rand, eta_);
 
-        char checking = ObstacleFree(x_nearest, x_new, mapData_);
+        int checking = ObstacleFree(x_nearest, x_new, mapData_);
 
         if (checking == -1) {
             geometry_msgs::msg::PointStamped goal;
