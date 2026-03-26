@@ -232,6 +232,19 @@ Visualization Manager:
         {}
       Queue Size: 100
       Value: true
+    - Class: rviz_default_plugins/MarkerArray
+      Enabled: true
+      Name: RRT_Trace
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /rrt_trace_markers
+      Queue Size: 100
+      Value: true
     - Class: rviz_default_plugins/Marker
       Enabled: true
       Topic:

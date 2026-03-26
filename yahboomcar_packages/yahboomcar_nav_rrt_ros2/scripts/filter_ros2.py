@@ -28,6 +28,9 @@ class FilterNode(Node):
         self.declare_parameter('namespace_init_count', 1)
         self.declare_parameter('rate', 10.0)
         self.declare_parameter('global_costmap_topic', '/global_costmap/costmap')
+        self.declare_parameter('cluster_bandwidth', 0.45)
+        self.declare_parameter('min_frontier_separation', 0.20)
+        self.declare_parameter('max_frontier_samples', 250)
 
         map_topic = self.get_parameter('map_topic').value
         self.info_radius = float(self.get_parameter('info_radius').value)
@@ -38,6 +41,9 @@ class FilterNode(Node):
         namespace_init_count = int(self.get_parameter('namespace_init_count').value)
         self.rate_hz = float(self.get_parameter('rate').value)
         global_costmap_topic = self.get_parameter('global_costmap_topic').value
+        self.cluster_bandwidth = float(self.get_parameter('cluster_bandwidth').value)
+        self.min_frontier_separation = float(self.get_parameter('min_frontier_separation').value)
+        self.max_frontier_samples = int(self.get_parameter('max_frontier_samples').value)
 
         self.frontiers = np.empty((0, 2), dtype=float)
         self.mapData = OccupancyGrid()
@@ -100,9 +106,15 @@ class FilterNode(Node):
 
             x = np.array([[transformed.point.x, transformed.point.y]], dtype=float)
             if len(self.frontiers) > 0:
+                distances = np.linalg.norm(self.frontiers - x[0], axis=1)
+                if np.min(distances) < self.min_frontier_separation:
+                    return
                 self.frontiers = np.vstack((self.frontiers, x))
             else:
                 self.frontiers = x
+
+            if self.max_frontier_samples > 0 and len(self.frontiers) > self.max_frontier_samples:
+                self.frontiers = self.frontiers[-self.max_frontier_samples:]
         except Exception as exc:
             self.get_logger().warn(f'Transform failed in goalsCallBack: {exc}')
 
@@ -188,9 +200,13 @@ class FilterNode(Node):
         front = np.array(self.frontiers, dtype=float)
         raw_frontiers = np.empty((0, 2), dtype=float)
 
+        if self.max_frontier_samples > 0 and len(front) > self.max_frontier_samples:
+            sample_idx = np.linspace(0, len(front) - 1, self.max_frontier_samples, dtype=int)
+            front = front[sample_idx]
+
         if len(front) > 1:
             try:
-                ms = MeanShift(bandwidth=0.3)
+                ms = MeanShift(bandwidth=self.cluster_bandwidth)
                 ms.fit(front)
                 raw_frontiers = ms.cluster_centers_
             except Exception as exc:

@@ -22,7 +22,10 @@ find_package(tf2_ros REQUIRED)
 # Generate messages
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/PointArray.msg"
+  "msg/GoalTraceEvent.msg"
+  "srv/SaveRRTSession.srv"
   DEPENDENCIES geometry_msgs
+  std_msgs
 )
 
 include_directories(include)
@@ -60,6 +63,8 @@ install(PROGRAMS
   scripts/functions_ros2.py
   scripts/getfrontier_ros2.py
   scripts/frontier_opencv_detector_ros2.py
+  scripts/rrt_trace_manager.py
+  scripts/trace_replay.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

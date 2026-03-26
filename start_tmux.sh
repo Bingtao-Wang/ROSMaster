@@ -18,7 +18,7 @@ fi
 # - 保留最小配置，优先稳定输入体验
 
 tmux new-session -d -s "$SESSION_NAME" "bash -lc 'claude --dangerously-skip-permissions; exec bash'"
-tmux split-window -h -t "$SESSION_NAME":0 "bash -lc 'codex; exec bash'"
+tmux split-window -h -t "$SESSION_NAME":0 "bash -lc 'codex --dangerously-bypass-approvals-and-sandbox; exec bash'"
 tmux set-option -t "$SESSION_NAME" -g mouse on
 tmux set-option -t "$SESSION_NAME" -g set-clipboard off
 

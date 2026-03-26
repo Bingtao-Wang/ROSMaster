@@ -6,6 +6,7 @@ from numpy import array
 from nav2_msgs.action import NavigateToPose
 from nav_msgs.srv import GetPlan
 from geometry_msgs.msg import PoseStamped
+from action_msgs.msg import GoalStatus
 from numpy import floor
 from numpy.linalg import norm
 from numpy import inf
@@ -61,10 +62,26 @@ class robot:
 
         self.goal_handle = None
         self.goal_status = 0  # 0: idle, 1: busy
+        self.goal_event_callback = None
+        self.active_goal_id = None
 
         self.make_plan_client = self.node.create_client(GetPlan, self.name+self.plan_service)
         robot.start.header.frame_id = self.global_frame
         robot.end.header.frame_id = self.global_frame
+
+    def set_goal_event_callback(self, callback):
+        self.goal_event_callback = callback
+
+    def _emit_goal_event(self, event_type, goal_id, point, nav_status=0):
+        if self.goal_event_callback is None or point is None:
+            return
+        self.goal_event_callback(
+            robot_name=self.name,
+            goal_id=goal_id,
+            event_type=event_type,
+            point=array(point, dtype=float),
+            nav_status=int(nav_status),
+        )
 
     def getPosition(self):
         try:
@@ -78,7 +95,7 @@ class robot:
             self.node.get_logger().warn(f'Transform lookup failed: {e}')
         return self.position
 
-    def sendGoal(self, point):
+    def sendGoal(self, point, goal_id=None):
         goal_msg = NavigateToPose.Goal()
         goal_msg.pose.header.frame_id = self.global_frame
         goal_msg.pose.header.stamp = self.node.get_clock().now().to_msg()
@@ -87,18 +104,41 @@ class robot:
         goal_msg.pose.pose.orientation.w = 1.0
 
         self.goal_status = 1  # busy
+        point_array = array(point, dtype=float)
+        context = {
+            'goal_id': goal_id if goal_id is not None else -1,
+            'point': point_array,
+        }
+        self.active_goal_id = context['goal_id']
         future = self.client.send_goal_async(goal_msg)
-        future.add_done_callback(self._goal_response_callback)
-        self.assigned_point = array(point)
+        future.add_done_callback(lambda fut, ctx=context: self._goal_response_callback(fut, ctx))
+        self.assigned_point = point_array
+        self._emit_goal_event('assigned', context['goal_id'], point_array, GoalStatus.STATUS_ACCEPTED)
 
-    def _goal_response_callback(self, future):
+    def _goal_response_callback(self, future, context):
         self.goal_handle = future.result()
         if self.goal_handle.accepted:
             result_future = self.goal_handle.get_result_async()
-            result_future.add_done_callback(self._goal_result_callback)
+            result_future.add_done_callback(lambda fut, ctx=context: self._goal_result_callback(fut, ctx))
+            return
 
-    def _goal_result_callback(self, future):
-        self.goal_status = 0  # idle
+        if context['goal_id'] == self.active_goal_id:
+            self.goal_status = 0
+        self._emit_goal_event('failed', context['goal_id'], context['point'], GoalStatus.STATUS_ABORTED)
+
+    def _goal_result_callback(self, future, context):
+        status = future.result().status
+        if context['goal_id'] == self.active_goal_id:
+            self.goal_status = 0  # idle
+            self.active_goal_id = None
+
+        if status == GoalStatus.STATUS_SUCCEEDED:
+            event_type = 'reached'
+        elif status == GoalStatus.STATUS_CANCELED:
+            event_type = 'canceled'
+        else:
+            event_type = 'failed'
+        self._emit_goal_event(event_type, context['goal_id'], context['point'], status)
 
     def getState(self):
         return self.goal_status
@@ -107,6 +147,7 @@ class robot:
         if self.goal_handle:
             self.goal_handle.cancel_goal_async()
         self.goal_status = 0
+        self.active_goal_id = None
         self.assigned_point = self.getPosition()
 # ________________________________________________________________________________
 
@@ -228,5 +269,4 @@ def gridValue(mapData, Xp):
         return Data[int(index)]
     else:
         return 100
-
 

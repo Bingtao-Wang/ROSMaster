@@ -8,7 +8,7 @@ from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from nav_msgs.msg import OccupancyGrid
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
-from yahboomcar_nav_rrt.msg import PointArray
+from yahboomcar_nav_rrt.msg import GoalTraceEvent, PointArray
 from functions_ros2 import robot, informationGain, discount
 from numpy.linalg import norm
 
@@ -54,6 +54,7 @@ class AssignerNode(Node):
         self.last_sent_target = None
         self.last_sent_target_time_ns = 0
         self.goal_visual_active = False
+        self.goal_sequence = 0
 
         latched_map_qos = QoSProfile(depth=1)
         latched_map_qos.reliability = ReliabilityPolicy.RELIABLE
@@ -64,6 +65,7 @@ class AssignerNode(Node):
         self.frontiers_sub = self.create_subscription(
             PointArray, frontiers_topic, self.callBack, 10)
         self.goal_marker_pub = self.create_publisher(Marker, 'assigned_goal_marker', 10)
+        self.goal_event_pub = self.create_publisher(GoalTraceEvent, 'rrt_goal_event', 20)
 
         self.robots = []
         for i in range(n_robots):
@@ -71,7 +73,9 @@ class AssignerNode(Node):
                 robot_name = namespace + str(i + namespace_init_count)
             else:
                 robot_name = '' if n_robots == 1 else str(i + namespace_init_count)
-            self.robots.append(robot(self, robot_name))
+            robot_obj = robot(self, robot_name)
+            robot_obj.set_goal_event_callback(self.publish_goal_event)
+            self.robots.append(robot_obj)
 
         self.timer = self.create_timer(max(assignment_period, 0.1), self.on_timer)
         self.get_logger().info('Assigner node initialized')
@@ -162,6 +166,19 @@ class AssignerNode(Node):
         for point in data.points:
             self.frontiers.append(np.array([point.x, point.y], dtype=float))
 
+    def publish_goal_event(self, robot_name, goal_id, event_type, point, nav_status):
+        msg = GoalTraceEvent()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.header.frame_id = self.goal_frame_id()
+        msg.goal_id = int(goal_id)
+        msg.robot_name = robot_name
+        msg.event_type = event_type
+        msg.point.x = float(point[0])
+        msg.point.y = float(point[1])
+        msg.point.z = 0.0
+        msg.nav_status = int(nav_status)
+        self.goal_event_pub.publish(msg)
+
     def mapCallBack(self, data):
         self.mapData = data
 
@@ -251,11 +268,14 @@ class AssignerNode(Node):
             if age_sec < self.repeat_target_cooldown and norm(self.last_sent_target - target) < self.repeat_target_radius:
                 return
 
-        robot_obj.sendGoal(target)
+        goal_id = self.goal_sequence
+        self.goal_sequence += 1
+
+        robot_obj.sendGoal(target, goal_id=goal_id)
         self.last_sent_target = np.array(target, dtype=float)
         self.last_sent_target_time_ns = self.get_clock().now().nanoseconds
         self.publish_goal_visualization(robot_positions[robot_idx], target)
-        self.get_logger().info(f'Robot {robot_idx} assigned to {target}')
+        self.get_logger().info(f'Robot {robot_idx} assigned goal_id={goal_id} to {target}')
 
 
 def main(args=None):

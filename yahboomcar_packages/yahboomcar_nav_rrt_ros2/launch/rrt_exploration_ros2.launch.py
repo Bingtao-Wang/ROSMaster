@@ -17,6 +17,18 @@ def generate_launch_description():
         DeclareLaunchArgument('frontiers_topic', default_value='/filtered_points'),
         DeclareLaunchArgument('robot_frame', default_value='base_link'),
         DeclareLaunchArgument('global_frame', default_value='map'),
+        DeclareLaunchArgument('filter_rate', default_value='4.0'),
+        DeclareLaunchArgument('assignment_period', default_value='0.2'),
+        DeclareLaunchArgument('filter_cluster_bandwidth', default_value='0.45'),
+        DeclareLaunchArgument('filter_min_frontier_separation', default_value='0.20'),
+        DeclareLaunchArgument('filter_max_frontier_samples', default_value='250'),
+        DeclareLaunchArgument(
+            'trace_output_dir',
+            default_value='/home/jetson/wbt_ws/WBT_ROS2_WS/yahboomcar_packages/yahboomcar_nav_rrt_ros2/maps'
+        ),
+        DeclareLaunchArgument('completion_patience', default_value='10.0'),
+        DeclareLaunchArgument('trajectory_distance_threshold', default_value='0.05'),
+        DeclareLaunchArgument('trajectory_time_threshold', default_value='0.5'),
 
         TimerAction(
             period=8.0,
@@ -51,6 +63,10 @@ def generate_launch_description():
                         'map_topic': LaunchConfiguration('map_topic'),
                         'info_radius': LaunchConfiguration('info_radius'),
                         'global_costmap_topic': LaunchConfiguration('global_costmap_topic'),
+                        'rate': LaunchConfiguration('filter_rate'),
+                        'cluster_bandwidth': LaunchConfiguration('filter_cluster_bandwidth'),
+                        'min_frontier_separation': LaunchConfiguration('filter_min_frontier_separation'),
+                        'max_frontier_samples': LaunchConfiguration('filter_max_frontier_samples'),
                     }],
                     output='screen'
                 ),
@@ -64,6 +80,23 @@ def generate_launch_description():
                         'frontiers_topic': LaunchConfiguration('frontiers_topic'),
                         'global_frame': LaunchConfiguration('global_frame'),
                         'robot_frame': LaunchConfiguration('robot_frame'),
+                        'assignment_period': LaunchConfiguration('assignment_period'),
+                    }],
+                    output='screen'
+                ),
+                Node(
+                    package='yahboomcar_nav_rrt',
+                    executable='rrt_trace_manager.py',
+                    name='rrt_trace_manager',
+                    parameters=[{
+                        'map_topic': LaunchConfiguration('map_topic'),
+                        'filtered_points_topic': LaunchConfiguration('frontiers_topic'),
+                        'global_frame': LaunchConfiguration('global_frame'),
+                        'robot_frame': LaunchConfiguration('robot_frame'),
+                        'trace_output_dir': LaunchConfiguration('trace_output_dir'),
+                        'completion_patience': LaunchConfiguration('completion_patience'),
+                        'trajectory_distance_threshold': LaunchConfiguration('trajectory_distance_threshold'),
+                        'trajectory_time_threshold': LaunchConfiguration('trajectory_time_threshold'),
                     }],
                     output='screen'
                 ),

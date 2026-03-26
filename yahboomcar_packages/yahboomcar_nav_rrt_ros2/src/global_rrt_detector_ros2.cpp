@@ -133,6 +133,35 @@ private:
             min_x, max_x, min_y, max_y, seed.x, seed.y, eta_);
     }
 
+    void expandSearchArea(const geometry_msgs::msg::Point &p)
+    {
+        const float margin = std::max(static_cast<float>(eta_ * 2.0), 0.5f);
+        const float current_min_x = x_start_x_ - (init_map_x_ * 0.5f);
+        const float current_max_x = x_start_x_ + (init_map_x_ * 0.5f);
+        const float current_min_y = x_start_y_ - (init_map_y_ * 0.5f);
+        const float current_max_y = x_start_y_ + (init_map_y_ * 0.5f);
+
+        float min_x = std::min(current_min_x, static_cast<float>(p.x));
+        float max_x = std::max(current_max_x, static_cast<float>(p.x));
+        float min_y = std::min(current_min_y, static_cast<float>(p.y));
+        float max_y = std::max(current_max_y, static_cast<float>(p.y));
+
+        min_x -= margin;
+        max_x += margin;
+        min_y -= margin;
+        max_y += margin;
+
+        init_map_x_ = max_x - min_x;
+        init_map_y_ = max_y - min_y;
+        x_start_x_ = (min_x + max_x) * 0.5f;
+        x_start_y_ = (min_y + max_y) * 0.5f;
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Global RRT area expanded by clicked point: bbox=[%.2f, %.2f] x [%.2f, %.2f], clicked=(%.2f, %.2f)",
+            min_x, max_x, min_y, max_y, p.x, p.y);
+    }
+
     void mapCallback(const nav_msgs::msg::OccupancyGrid::SharedPtr msg)
     {
         mapData_ = *msg;
@@ -140,14 +169,20 @@ private:
 
     void clickedCallback(const geometry_msgs::msg::PointStamped::SharedPtr msg)
     {
-        if (initialized_ || clicked_points_.size() >= 5) {
-            return;
-        }
-
         geometry_msgs::msg::Point p;
         p.x = msg->point.x;
         p.y = msg->point.y;
         p.z = msg->point.z;
+
+        if (initialized_) {
+            expandSearchArea(p);
+            return;
+        }
+
+        if (clicked_points_.size() >= 5) {
+            return;
+        }
+
         clicked_points_.push_back(p);
     }
 

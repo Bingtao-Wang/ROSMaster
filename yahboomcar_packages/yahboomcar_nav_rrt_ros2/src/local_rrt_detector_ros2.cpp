@@ -142,6 +142,20 @@ private:
             min_x_, max_x_, min_y_, max_y_, eta_, range_);
     }
 
+    void expandSearchArea(const geometry_msgs::msg::Point &p)
+    {
+        const double margin = std::max(eta_ * 2.0, 0.5);
+        min_x_ = std::min(min_x_, static_cast<double>(p.x)) - margin;
+        max_x_ = std::max(max_x_, static_cast<double>(p.x)) + margin;
+        min_y_ = std::min(min_y_, static_cast<double>(p.y)) - margin;
+        max_y_ = std::max(max_y_, static_cast<double>(p.y)) + margin;
+
+        RCLCPP_INFO(
+            this->get_logger(),
+            "Local RRT area expanded by clicked point: bbox=[%.2f, %.2f] x [%.2f, %.2f], clicked=(%.2f, %.2f)",
+            min_x_, max_x_, min_y_, max_y_, p.x, p.y);
+    }
+
     bool updateRobotPose()
     {
         try {
@@ -191,14 +205,20 @@ private:
 
     void clickedCallback(const geometry_msgs::msg::PointStamped::SharedPtr msg)
     {
-        if (initialized_ || clicked_points_.size() >= 5) {
-            return;
-        }
-
         geometry_msgs::msg::Point p;
         p.x = msg->point.x;
         p.y = msg->point.y;
         p.z = msg->point.z;
+
+        if (initialized_) {
+            expandSearchArea(p);
+            return;
+        }
+
+        if (clicked_points_.size() >= 5) {
+            return;
+        }
+
         clicked_points_.push_back(p);
     }
 
